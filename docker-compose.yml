@@ -6,7 +6,7 @@ services:
     ports: 
       - "3000:80"
     networks:
-      - thesis-network
+      - network
 
   backend:
     build:
@@ -15,14 +15,14 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - thesis-network
+      - network
     depends_on:
       - postgres
 
   postgres:
     image: postgres
     networks:
-      - thesis-network
+      - network
     volumes:
       - postgres-data:/var/lib/postgresql
     environment:
@@ -31,7 +31,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
 
 networks:
-  thesis-network:
+  network:
 
 volumes:
   postgres-data:

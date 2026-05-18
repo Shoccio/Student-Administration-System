@@ -14,7 +14,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 # Get database URL from environment
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://test_user:testing@thesis-postgres-1:5432/test_db"
+    "postgresql://test_user:testing@postgres:5432/test_db"
 )
 
 if not DATABASE_URL:
