@@ -51,7 +51,7 @@ def editFilter(key: str, value: str, db: Session = Depends(get_db)):
 
 @router.put("/reset_filter")
 def resetFilter(db: Session = Depends(get_db)):
-    updated_filters = student_func.reset_filter(db)
+    updated_filters = student_func.reset_filter()
     return JSONResponse(content={"filters": updated_filters})
 
 @router.post("/evaluate/{student_id}")

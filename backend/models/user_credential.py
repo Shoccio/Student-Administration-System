@@ -13,7 +13,7 @@ class UserCredential(Base):
 
     username = Column(String, primary_key=True)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # 'admin', 'student', 'faculty'
+    role = Column(String, nullable=False)  # 'admin', 'student', 'super admin'
     full_name = Column(String, nullable=True)
     student_id = Column(String, ForeignKey("students.student_id", ondelete="SET NULL"), unique=True, nullable=True)
     email = Column(String, nullable=True)
