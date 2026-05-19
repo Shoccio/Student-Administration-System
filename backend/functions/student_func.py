@@ -143,8 +143,8 @@ def getStudent(student_id: str = None, db: Session = None):
         
         courses = getStudentCourses(student_id, student_dict["program_id"], student_dict.get("curriculum_id"), db=db)
 
-        total_units = sum(course["course_units"] for course in courses)
-        units_taken = sum(course["course_units"] for course in courses if course["remark"] == "Passed")
+        total_units = sum(float(course["course_units"]) for course in courses)
+        units_taken = sum(float(course["course_units"]) for course in courses if course["remark"] == "Passed")
         gwa = getGWA(courses)
 
         student_dict["gwa"] = gwa
@@ -169,6 +169,9 @@ def getStudent(student_id: str = None, db: Session = None):
         # Update GWA in database
         student_data.gwa = gwa
         db.commit()
+
+        student_dict["gwa"] = str(gwa)
+
         
         # Convert evaluated timestamp to string if it exists
         if "evaluated" in student_dict and student_dict["evaluated"] is not None:

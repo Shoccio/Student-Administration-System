@@ -233,9 +233,9 @@ def getStudentCourses(student_id: str, program_id: str, curriculum_id: int | Non
             courses.append({
                 "course_id": course_id,
                 "course_name": course_data.course_name if course_data else None,
-                "course_units": units_lec + units_lab,
-                "units_lec": units_lec,
-                "units_lab": units_lab,
+                "course_units": str(units_lec + units_lab),
+                "units_lec": str(units_lec),
+                "units_lab": str(units_lab),
                 "semester": semester,
                 "year": year,
                 "grade": grade_data.get("grade"),
