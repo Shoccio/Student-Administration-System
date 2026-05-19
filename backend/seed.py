@@ -1,7 +1,7 @@
 from db.database import get_db
 from models import *
 from schema import student_schema
-from services.student_services import addStudent
+from services.student_services import addStudentHelper
 
 db = next(get_db())
 
@@ -198,18 +198,18 @@ try:
             f_name="Juan",
             l_name="Dela Cruz",
             m_name="Santos",
-            gwa=1.75,
+            gwa=0,
             status="Regular",
             year=2,
             gender="Male",
             is_transferee=False,
             archived=False,
             email="juan.delacruz@example.com",
-            dept="Computer Studies",
+            dept="CSS",
             evaluated=1
         )
         
-        addStudent(new_student, db)
+        addStudentHelper(new_student, db)
 
     # =========================
     # COMMIT ONCE
