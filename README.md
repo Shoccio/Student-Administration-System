@@ -1,94 +1,120 @@
-# Evaluation System - Supabase Migration
+# Evaluation System - Docker Migration
 
-This is a forked version of the Course Checklist/Evaluation System that has been migrated from Firebase Firestore to Supabase (PostgreSQL).
+This branch contains a Dockerized version of the Course Checklist / Evaluation System.  
+The application has been configured to run the frontend, backend, and database services inside containers for easier setup and deployment.
 
-## 🎯 What Changed
+---
 
-This fork migrates the entire backend database layer from Firebase Firestore (NoSQL) to Supabase (PostgreSQL/SQL) to overcome the limitations of document-based databases for this relational data model.
+## 🎯 What's Different in This Version?
 
-### Why the Migration?
+This branch introduces a complete Docker-based environment for the system.
 
-The original Firebase implementation faced challenges inherent to NoSQL:
-- **Data denormalization**: Course details were duplicated across student enrollments and program courses
-- **Complex queries**: Fetching related data required multiple round-trips and client-side joins
-- **Data integrity**: No foreign key constraints meant orphaned records were possible
-- **Scalability**: Updates to course information required batch updates across thousands of documents
+Using Docker allows the application to run consistently across different operating systems and development environments with minimal setup.
 
-PostgreSQL solves these issues with proper relational modeling, foreign keys, and efficient JOIN operations.
+The following services are containerized:
 
-**Original Repository**: [Shoccio/course_checklist](https://github.com/Shoccio/course_checklist)  
-**Forked Repository**: [Kenaine/eval_system](https://github.com/Kenaine/eval_system)
+- Frontend
+- Backend API
+- PostgreSQL Database
 
-## 📦 Quick Start
+---
 
-### Prerequisites
-- Python 3.9+
-- Node.js 14+ (for frontend)
-- Supabase account
+## ❓ Why This Migration?
 
-### Backend Setup
+The original version of the project was designed around a cloud-hosted architecture where the frontend, backend, and database services were managed separately.
 
-1. **Clone the repository**
-   ```bash
-   git clone git@github.com:Kenaine/eval_system.git
-   cd eval_system
-   ```
+This version focuses on portability and ease of deployment by allowing the entire system to run locally through Docker.
 
-2. **Set up Supabase**
-   - Create a new Supabase project
-   - Run the SQL schema from `supabase/schema.sql`
-   - Get your Project URL and service_role key
+This setup makes the project:
+- Easier to install
+- Easier to develop on
+- More consistent across machines
+- Simpler to deploy and test
 
-3. **Configure environment**
-   ```bash
-   cd backend
-   cp .env.example .env
-   # Edit .env and add your Supabase credentials
-   ```
+The migration also replaces the previous database structure with PostgreSQL, allowing for:
+- Proper relational modeling
+- Foreign key constraints
+- Improved data integrity
+- Efficient JOIN operations
 
-4. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+---
 
-5. **Run the backend**
-   ```bash
-   uvicorn api:app --reload
-   ```
+## 🔗 Repositories
 
-### Frontend Setup
+**Original Repository**:  
+https://github.com/Shoccio/course_checklist
 
-1. **Install dependencies**
-   ```bash
-   cd frontend
-   npm install
-   ```
+---
 
-2. **Run the frontend**
-   ```bash
-   npm start
-   ```
+## 🐳 Docker Services
+
+| Service   | Port |
+|----------|------|
+| Frontend | 3000 |
+| Backend  | 8000 |
+
+# 📦 Quick Start
+
+## Prerequisites
+
+Before running the project, install:
+
+- Docker
+
+---
+
+## 🚀 Setup
+
+Run the following commands:
+
+```bash
+docker compose up --build
+
+docker compose exec backend alembic revision --autogenerate -m "initial schema"
+
+docker compose exec backend alembic upgrade head
+
+docker compose exec backend python seed.py
+```
+
+## 🧹 Reset / Cleanup
+
+Stop containers:
+docker compose down
+
+Remove volumes (reset database):
+docker compose down -v
 
 ## 📚 Documentation
 
 - **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** - Complete migration documentation
-- **[supabase/schema.sql](./supabase/schema.sql)** - Database schema
 
 ## 🔄 Migration Summary
 
-### Database Changes
-- ✅ Firebase Firestore → Supabase (PostgreSQL)
-- ✅ NoSQL collections → Relational tables
-- ✅ Row Level Security (RLS) enabled
-- ✅ Foreign keys and indexes added
-- ✅ Automatic timestamp triggers
+## 🗄️ Database Changes
 
-### Code Changes
-- ✅ All backend functions migrated to Supabase client
-- ✅ Authentication system updated
-- ✅ Student, Course, and Program management migrated
-- ✅ Grading system updated
-- ✅ Dependencies updated
+- ✅ Firebase Firestore migrated to PostgreSQL
+- ✅ NoSQL document collections converted into relational database tables
+- ✅ Foreign key relationships implemented for improved data integrity
+- ✅ Database indexes added for faster queries and better performance
+- ✅ Automatic timestamp handling added for record creation and updates
+- ✅ Database schema versioning implemented using Alembic migrations
+- ✅ Persistent Docker volumes added for PostgreSQL data storage
+
+---
+
+## 💻 Backend & Application Changes
+
+- ✅ Backend migrated to a containerized Docker environment
+- ✅ FastAPI backend integrated with PostgreSQL using SQLAlchemy ORM
+- ✅ Authentication and authorization system updated
+- ✅ Student, Course, Curriculum, and Program management migrated
+- ✅ Database seeding system added for development and testing
+- ✅ Docker Compose setup added for multi-container orchestration
+- ✅ Frontend production build optimized using Nginx
+- ✅ API routing and frontend refresh handling configured for SPA deployment
+- ✅ Environment variable support added using `.env` configuration
+- ✅ Dependencies and project structure updated
 
 ## 🗂️ Database Structure
 
@@ -151,48 +177,121 @@ student_courses
 
 ## 🔐 Security
 
-- Row Level Security (RLS) enabled on all tables
+- ✅ Database-level constraints and foreign keys used for data integrity
 - Service role key required for backend operations
 - JWT-based authentication
 - Password hashing with bcrypt
 - Environment variables for sensitive data
 
-## 🛠️ Technologies
+## 🛠️ Technologies Used
 
 ### Backend
-- FastAPI (Python web framework)
-- Supabase (PostgreSQL database)
-- Pydantic (data validation)
-- PassLib (password hashing)
-- Python-JOSE (JWT handling)
+- FastAPI — Python web framework for building REST APIs
+- PostgreSQL — Relational database system
+- SQLAlchemy — ORM for database interaction
+- Alembic — Database migration and schema versioning
+- Pydantic — Data validation and serialization
+- PassLib — Password hashing and security utilities
+- Python-JOSE — JWT authentication and token handling
+- Uvicorn — ASGI server for FastAPI applications
+
+---
 
 ### Frontend
-- React
-- React Router
-- Axios
-- React Icons
-- Recharts (for data visualization)
+- React — Frontend JavaScript library
+- React Router — Client-side routing
+- Axios — API communication
+- React Icons — Icon library for React
+- Recharts — Data visualization and chart components
+
+---
+
+### DevOps & Deployment
+- Docker — Containerization platform
+- Docker Compose — Multi-container orchestration
+- Nginx — Frontend production server and reverse proxy
+
+---
+
+### Database & Development Tools
+- PostgreSQL Volumes — Persistent database storage
+- Environment Variables (`.env`) — Configuration management
+- Git & GitHub — Version control and repository management
+
+## 📌 API Structure Overview
+
+- /auth → Authentication
+- /student → Student management
+- /SC → Student's Courses management
+- /course → Course management
+- /curriculum → Curriculum management
+- /currCourse → Curriculum course mapping
+- /program → Program management
 
 ## 📝 API Endpoints
 
-### Authentication
-- `POST /auth/login` - User login
+
+## 🔐 Authentication
+
+- `POST /login` - Authenticate user and return JWT token + profile
+- `POST /edit-password/{username}` - Change password for a user
+- `POST /reset-student-password/{student_id}` - Reset student password to default
+- `DELETE /delete-user/{username}` - Delete a user account
+
+---
+
+## 🛠️ Admin Management
+
+- `POST /admin/create` - Create a new admin user
+- `PUT /admin-update/{username}` - Update an existing admin user
+- `DELETE /admin-delete/{username}` - Delete an admin user
+- `GET /admins/search` - Search admins by name or username
+- `GET /admin/{name}` - Get admin details by name or username
 
 ### Students
-- `GET /students` - List all students
-- `GET /students/{id}` - Get student details
-- `POST /students` - Add new student
-- `PUT /students/{id}` - Update student
-- `DELETE /students/{id}` - Delete student
 
-### Courses
-- `GET /courses` - List all courses
-- `POST /courses` - Add new course
-- `PUT /courses/{id}` - Update course
-- `DELETE /courses/{id}` - Delete course
+- `POST /add` - Add a new student
+- `PUT /edit` - Edit student information
+- `DELETE /delete/{student_id}` - Delete a student
+- `GET /search` - Search students with optional filters
+- `GET /get/{student_id}` - Get student details by ID
+- `GET /get_all` - Retrieve all students
+- `GET /filter/{key}/{value}` - Filter students by specific field and value
+- `POST /edit_filter/{key}/{value}` - Edit active student filters
+- `PUT /reset_filter` - Reset all student filters
+- `POST /evaluate/{student_id}` - Evaluate a student
+- `POST /take_off_evaluation/{student_id}` - Remove student from evaluation
+- `POST /bulk-upload` - Upload students using CSV file
+- `PATCH /archive` - Archive a student
+- `PATCH /unarchive` - Unarchive a student
+
+## 📚 Courses
+
+- `GET /getAll` - Retrieve all courses
+- `POST /add` - Add a new course
+- `PUT /edit/{course_id}` - Edit an existing course
+- `DELETE /delete/{course_id}` - Delete a course
+- `PUT /update/{program_id}` - Update courses under a specific program
+- `GET /get/{program_id}` - Get all courses by program ID
 
 ### Programs
 - `GET /programs` - List all programs
+
+## 🎓 Curriculum
+
+- `GET /get/{program_id}` - Get curriculum by program ID
+- `POST /add` - Add a new curriculum
+- `DELETE /delete` - Delete a curriculum
+- `PATCH /archive` - Archive a curriculum
+- `PATCH /unarchive` - Unarchive a curriculum
+- `PUT /toggleArchive` - Toggle archive status for curriculum records
+
+## 📘 Curriculum Courses
+
+- `GET /get_courses?program=&curriculum=` - Get courses under a specific program and curriculum
+- `POST /add-course` - Add a course to a curriculum
+- `POST /delete-course` - Remove a course from a curriculum
+- `POST /reorder-courses` - Reorder courses within a curriculum
 
 ### Grades
 - `POST /grades` - Update student grades
@@ -214,11 +313,6 @@ This project maintains the same license as the original repository.
 
 - Original project by [Shoccio](https://github.com/Shoccio)
 - Migrated to Supabase by Kenaine
-
-## 📧 Support
-
-For migration-specific questions, refer to [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)
+- Configured to Docker by [Shoccio]
 
 ---
-
-**Note**: This is a database migration fork. All original features and functionality have been preserved while upgrading to a more scalable PostgreSQL-based infrastructure.
