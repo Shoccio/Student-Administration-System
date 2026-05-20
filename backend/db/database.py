@@ -8,13 +8,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 
-# Load .env from the backend directory
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+# Load .env (only if running locally, Docker can still inject env vars)
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-# Get database URL from environment
+# =========================
+# ENV VARIABLES
+# =========================
+DB_USER = os.getenv("POSTGRES_USER", "test_user")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "testing")
+DB_HOST = os.getenv("POSTGRES_HOST", "postgres")  # Docker service name
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "test_db")
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://test_user:testing@postgres:5432/test_db"
+    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
 if not DATABASE_URL:
