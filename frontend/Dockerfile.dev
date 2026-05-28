@@ -1,0 +1,10 @@
+#Build=====================================
+ARG NODE_VERSION=22-alpine
+FROM node:${NODE_VERSION} AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+CMD ["npm", "start", "--", "--host", "0.0.0.0"]
