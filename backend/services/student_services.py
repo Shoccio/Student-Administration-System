@@ -1,44 +1,58 @@
 from schema.student_schema import Student
 from functions.student_func import addStudent
 from functions.student_course_func import addEntry
-from db.supabase_client import supabase
+from models import Curriculum, UserCredential
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException, status
 
 
-def addStudentHelper(student: Student):
-    if student.curriculum and not student.curriculum_id:
-        curriculum_result = supabase.table("curriculum") \
-            .select("id") \
-            .eq("program_id", student.program_id) \
-            .eq("name", student.curriculum) \
-            .limit(1) \
-            .execute()
+def addStudentHelper(student: Student, db: Session):
+    """Add a new student with auto-created user credentials and courses"""
+    try:
+        # Resolve curriculum_id from curriculum name if needed
+        if student.curriculum and not student.curriculum_id:
+            curriculum = db.query(Curriculum).filter(
+                Curriculum.program_id == student.program_id,
+                Curriculum.name == student.curriculum
+            ).first()
 
-        if curriculum_result.data:
-            student.curriculum_id = curriculum_result.data[0]["id"]
+            if curriculum:
+                student.curriculum_id = curriculum.id
 
-    # Add student record
-    addStudent(student)
+        # Add student record
+        added_student = addStudent(student, db)
 
-    # Auto-create user credentials (ported from course_checklist addUser).
-    # Check if credentials already exist to avoid duplicate key errors
-    existing_creds = supabase.table("user_credentials").select("username").eq("username", student.student_id).execute()
-    
-    if not existing_creds.data:
-        # Username = student_id. Password stored as TEMP_<student_id> so it gets
-        # bcrypt-hashed automatically on the student's first login.
-        supabase.table("user_credentials").insert({
-            "username":       student.student_id,
-            "hashed_password": "TEMP_#Uphsl123",
-            "role":           "student",
-            "student_id":     student.student_id,
-            "full_name":      f"{student.f_name} {student.l_name}"
-        }).execute()
+        # Auto-create user credentials (ported from course_checklist addUser).
+        # Check if credentials already exist to avoid duplicate key errors
+        existing_creds = db.query(UserCredential).filter(
+            UserCredential.username == student.student_id
+        ).first()
+        
+        if not existing_creds:
+            # Username = student_id. Password stored as TEMP_<student_id> so it gets
+            # bcrypt-hashed automatically on the student's first login.
+            new_cred = UserCredential(
+                username=student.student_id,
+                hashed_password="TEMP_#Uphsl123",
+                role="student",
+                student_id=student.student_id,
+                full_name=f"{student.f_name} {student.l_name}",
+                email=student.email
+            )
+            db.add(new_cred)
+            db.commit()
 
-    # Add their courses
-    addEntry(student.student_id, student.program_id, student.curriculum, student.curriculum_id)
+        # Add their courses
+        addEntry(student.student_id, student.program_id, student.curriculum, student.curriculum_id, db)
+        
+        return added_student
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
 
-def bulkAddStudents(rows: list[dict]) -> dict:
+def bulkAddStudents(rows: list[dict], db: Session) -> dict:
     """
     Insert multiple students from parsed CSV rows.
     Returns { inserted: int, failed: int, errors: [{row, reason}] }
@@ -75,7 +89,7 @@ def bulkAddStudents(rows: list[dict]) -> dict:
                 archived     = row.get("archived", "false").strip().lower() == "true",
                 gender       = row["gender"].strip(),
             )
-            addStudentHelper(student)
+            addStudentHelper(student, db)
             inserted += 1
         except Exception as e:
             failed += 1

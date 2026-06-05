@@ -1,224 +1,127 @@
-# Evaluation System - Supabase Migration
+# Student Administration System
 
-This is a forked version of the Course Checklist/Evaluation System that has been migrated from Firebase Firestore to Supabase (PostgreSQL).
+A modern, self-hosted course management and student evaluation platform built for educational institutions. Administrators manage courses, curricula, and student evaluations, while students can view their enrolled courses and progress.
 
-## 🎯 What Changed
-
-This fork migrates the entire backend database layer from Firebase Firestore (NoSQL) to Supabase (PostgreSQL/SQL) to overcome the limitations of document-based databases for this relational data model.
-
-### Why the Migration?
-
-The original Firebase implementation faced challenges inherent to NoSQL:
-- **Data denormalization**: Course details were duplicated across student enrollments and program courses
-- **Complex queries**: Fetching related data required multiple round-trips and client-side joins
-- **Data integrity**: No foreign key constraints meant orphaned records were possible
-- **Scalability**: Updates to course information required batch updates across thousands of documents
-
-PostgreSQL solves these issues with proper relational modeling, foreign keys, and efficient JOIN operations.
-
-**Original Repository**: [Shoccio/course_checklist](https://github.com/Shoccio/course_checklist)  
-**Forked Repository**: [Kenaine/eval_system](https://github.com/Kenaine/eval_system)
-
-## 📦 Quick Start
-
-### Prerequisites
-- Python 3.9+
-- Node.js 14+ (for frontend)
-- Supabase account
-
-### Backend Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone git@github.com:Kenaine/eval_system.git
-   cd eval_system
-   ```
-
-2. **Set up Supabase**
-   - Create a new Supabase project
-   - Run the SQL schema from `supabase/schema.sql`
-   - Get your Project URL and service_role key
-
-3. **Configure environment**
-   ```bash
-   cd backend
-   cp .env.example .env
-   # Edit .env and add your Supabase credentials
-   ```
-
-4. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. **Run the backend**
-   ```bash
-   uvicorn api:app --reload
-   ```
-
-### Frontend Setup
-
-1. **Install dependencies**
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. **Run the frontend**
-   ```bash
-   npm start
-   ```
-
-## 📚 Documentation
-
-- **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** - Complete migration documentation
-- **[supabase/schema.sql](./supabase/schema.sql)** - Database schema
-
-## 🔄 Migration Summary
-
-### Database Changes
-- ✅ Firebase Firestore → Supabase (PostgreSQL)
-- ✅ NoSQL collections → Relational tables
-- ✅ Row Level Security (RLS) enabled
-- ✅ Foreign keys and indexes added
-- ✅ Automatic timestamp triggers
-
-### Code Changes
-- ✅ All backend functions migrated to Supabase client
-- ✅ Authentication system updated
-- ✅ Student, Course, and Program management migrated
-- ✅ Grading system updated
-- ✅ Dependencies updated
-
-## 🗂️ Database Structure
-
-```
-users
-├── user_id (PK)
-├── hashed_pass
-└── role
-
-programs
-├── program_id (PK)
-├── program_name
-└── program_specialization
-
-courses
-├── course_id (PK)
-├── course_name
-├── course_hours
-├── course_preq
-├── course_sem
-├── hours_lab
-├── hours_lec
-├── units_lab
-└── units_lec
-
-students
-├── student_id (PK)
-├── program_id (FK → programs)
-├── f_name, l_name, m_name
-├── year
-├── status
-├── archived
-├── evaluated
-├── gwa
-└── is_transferee
-
-program_course
-├── program_id (FK → programs)
-├── course_id (FK → courses)
-└── sequence
-└── PRIMARY KEY(program_id, course_id)
-
-student_courses
-├── student_id (FK → students)
-├── course_id (FK → courses)
-├── grade
-└── remark
-└── PRIMARY KEY(student_id, course_id)
-```
-
-## 🚀 Features
-
-- Student management (CRUD operations)
-- Course catalog management
-- Program and curriculum management
-- Student enrollment management
-- Grade recording and GPA calculation
-- Student evaluation tracking
-- Role-based authentication (admin/student)
-
-## 🔐 Security
-
-- Row Level Security (RLS) enabled on all tables
-- Service role key required for backend operations
-- JWT-based authentication
-- Password hashing with bcrypt
-- Environment variables for sensitive data
-
-## 🛠️ Technologies
-
-### Backend
-- FastAPI (Python web framework)
-- Supabase (PostgreSQL database)
-- Pydantic (data validation)
-- PassLib (password hashing)
-- Python-JOSE (JWT handling)
-
-### Frontend
-- React
-- React Router
-- Axios
-- React Icons
-- Recharts (for data visualization)
-
-## 📝 API Endpoints
-
-### Authentication
-- `POST /auth/login` - User login
-
-### Students
-- `GET /students` - List all students
-- `GET /students/{id}` - Get student details
-- `POST /students` - Add new student
-- `PUT /students/{id}` - Update student
-- `DELETE /students/{id}` - Delete student
-
-### Courses
-- `GET /courses` - List all courses
-- `POST /courses` - Add new course
-- `PUT /courses/{id}` - Update course
-- `DELETE /courses/{id}` - Delete course
-
-### Programs
-- `GET /programs` - List all programs
-
-### Grades
-- `POST /grades` - Update student grades
-- `PUT /grades/bulk` - Bulk update grades
-
-## 🤝 Contributing
-
-If you'd like to contribute:
-1. Fork this repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 📄 License
-
-This project maintains the same license as the original repository.
-
-## 🙏 Acknowledgments
-
-- Original project by [Shoccio](https://github.com/Shoccio)
-- Migrated to Supabase by Kenaine
-
-## 📧 Support
-
-For migration-specific questions, refer to [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)
+This is a fully containerized fork of the original system, enabling self-hosting on any infrastructure while maintaining cloud deployment options.
 
 ---
 
-**Note**: This is a database migration fork. All original features and functionality have been preserved while upgrading to a more scalable PostgreSQL-based infrastructure.
+## ✨ Features
+
+- **Admin Dashboard**: Manage students, courses, curricula, and program structures
+- **Student Portal**: Students log in to view their courses and progress
+- **Relational Database**: PostgreSQL-backed with proper data integrity and foreign key constraints
+- **Authentication**: Secure credential management with role-based access control
+- **Self-Hosted**: Run entirely on your own infrastructure with Docker
+- **Cloud Ready**: Easy deployment to Render, Railway, or any container platform
+- **API-Driven**: RESTful backend for extensibility and integration
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React with modern JavaScript |
+| **Backend** | Python FastAPI with SQLAlchemy ORM |
+| **Database** | PostgreSQL with Alembic migrations |
+| **DevOps** | Docker & Docker Compose |
+| **Deployment** | Self-hosted (Docker), Render, Railway |
+
+---
+
+## � Quick Start
+
+### Prerequisites
+
+- Docker & Docker Compose
+
+### Setup (Local Docker)
+
+```bash
+# Start all services
+docker compose up --build
+
+# Initialize database
+docker compose exec backend alembic upgrade head
+
+# Seed initial data
+docker compose exec backend python seed.py
+```
+
+Access the application:
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:8000
+
+### Reset Database
+
+```bash
+# Stop containers
+docker compose down
+
+# Remove volumes and reset database
+docker compose down -v
+```
+
+---
+
+## 🚀 Deployment Options
+
+| Option | Use Case |
+|--------|----------|
+| **Docker (Local)** | Development, self-hosted on your infrastructure |
+| **Render** | Cloud deployment with automated builds (original setup) |
+| **Railway** | Simple cloud hosting with environment management |
+
+Configuration files: `render.yaml`, `railway.json`
+
+---
+
+## 🗂️ Project Structure
+
+```
+├── backend/              # FastAPI application
+│   ├── models/          # SQLAlchemy ORM models
+│   ├── routes/          # API endpoints
+│   ├── functions/       # Business logic
+│   ├── db/              # Database configuration
+│   ├── alembic/         # Database migrations
+│   └── requirements.txt
+│
+├── frontend/            # React application
+│   ├── src/
+│   │   ├── pages/       # Page components
+│   │   ├── component/   # Reusable components
+│   │   └── lib/         # Utilities & API client
+│   └── package.json
+│
+├── docker-compose.yml   # Multi-environment compose setup
+└── docs/               # Setup guides and migration docs
+```
+
+---
+
+## 📚 Documentation
+
+- **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** — Database schema changes and migration details
+- **[AUTH_SETUP.md](./backend/AUTH_SETUP.md)** — Authentication configuration
+- **[CREATE_ADMIN.md](./backend/CREATE_ADMIN.md)** — Creating admin accounts
+- **[SETUP_CHECKLIST.md](./backend/SETUP_CHECKLIST.md)** — Deployment checklist
+
+---
+
+## 🔑 Key Implementation Details
+
+- **RESTful API**: FastAPI backend with structured route organization (auth, students, courses, curricula, programs)
+- **Data Integrity**: PostgreSQL with foreign key constraints and relational modeling
+- **Authentication**: JWT-based auth with role-based access control (admin/student)
+- **Database Versioning**: Alembic migrations for schema management and reproducible deployments
+- **Component Architecture**: Modular functions, models, and routes for maintainability
+
+---
+
+## 📌 Acknowledgments
+
+**Original Project**: [course_checklist](https://github.com/Shoccio/course_checklist)
+
+This fork modernizes the deployment architecture through containerization while maintaining the core functionality for educational institution administration.

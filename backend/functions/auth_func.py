@@ -2,16 +2,18 @@ from fastapi import Depends, HTTPException, status, Request
 from typing import Optional
 import jwt
 import os
+from sqlalchemy.orm import Session
 
-from db.supabase_client import supabase
+from db.database import get_db
+from models import UserCredential
 
 # JWT settings (should match auth_routes.py)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
 ALGORITHM = "HS256"
 
-def get_user_from_token(request: Request) -> dict:
+def get_user_from_token(request: Request, db: Session = Depends(get_db)) -> dict:
     """
-    Extract and verify Supabase Auth token from request headers.
+    Extract and verify JWT token from request headers.
     Returns the user data if authenticated.
     """
     auth_header = request.headers.get("Authorization")
@@ -25,52 +27,66 @@ def get_user_from_token(request: Request) -> dict:
     token = auth_header.split(" ")[1]
     
     try:
-        # Verify the JWT token with Supabase
-        user_response = supabase.auth.get_user(token)
+        # Verify the JWT token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
         
-        if not user_response or not user_response.user:
+        if username is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token"
+                detail="Invalid token"
             )
         
-        return user_response.user
+        # Get user from database
+        user = db.query(UserCredential).filter(UserCredential.username == username).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
         
+        return {"username": user.username, "role": user.role, "student_id": user.student_id}
+        
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Authentication failed: {str(e)}"
         )
 
-def get_current_user(request: Request = None) -> dict:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Dependency to get the currently authenticated user.
     """
-    if request is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No request context"
-        )
-    
-    return get_user_from_token(request)
+    return get_user_from_token(request, db)
 
-def get_user_profile(user_id: str) -> Optional[dict]:
+def get_user_profile(username: str, db: Session) -> Optional[dict]:
     """
-    Get user profile from profiles table.
+    Get user profile from user_credentials table.
     """
-    result = supabase.table("profiles").select("*").eq("id", user_id).execute()
+    user = db.query(UserCredential).filter(UserCredential.username == username).first()
     
-    if not result.data:
+    if not user:
         return None
     
-    return result.data[0]
+    return {
+        "username": user.username,
+        "role": user.role,
+        "full_name": user.full_name,
+        "student_id": user.student_id,
+        "email": user.email
+    }
 
-def get_current_user_profile(request: Request) -> dict:
+def get_current_user_profile(request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Get profile of currently authenticated user.
     """
-    user = get_current_user(request)
-    profile = get_user_profile(user.id)
+    user = get_current_user(request, db)
+    profile = get_user_profile(user["username"], db)
     
     if not profile:
         raise HTTPException(
@@ -80,19 +96,19 @@ def get_current_user_profile(request: Request) -> dict:
     
     return profile
 
-def get_current_user_role(request: Request) -> str:
+def get_current_user_role(request: Request, db: Session = Depends(get_db)) -> str:
     """
     Get role of currently authenticated user.
     """
-    profile = get_current_user_profile(request)
-    return profile.get("role", "student")
+    user = get_current_user(request, db)
+    return user.get("role", "student")
 
 def check_role(roles: list[str]):
     """
     Dependency to check if user has required role.
     """
-    def checker(request: Request):
-        role = get_current_user_role(request)
+    def checker(request: Request, db: Session = Depends(get_db)):
+        role = get_current_user_role(request, db)
         if role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -102,12 +118,12 @@ def check_role(roles: list[str]):
     
     return Depends(checker)
 
-def is_admin(request: Request) -> bool:
+def is_admin(request: Request, db: Session = Depends(get_db)) -> bool:
     """
     Check if current user is an admin.
     """
     try:
-        role = get_current_user_role(request)
+        role = get_current_user_role(request, db)
         return role == "admin" or role == "super admin"
     except:
         return False

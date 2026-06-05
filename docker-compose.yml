@@ -1,0 +1,10 @@
+services:
+  frontend: {}
+  backend: {}
+  postgres: {}
+
+networks:
+  network:
+
+volumes:
+  postgres-data:

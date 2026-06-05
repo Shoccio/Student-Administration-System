@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/';
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -29,12 +29,15 @@ apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Token expired or invalid - redirect to login
-            localStorage.removeItem('supabase_token');
-            localStorage.removeItem('user_profile');
-            sessionStorage.removeItem('supabase_token');
-            sessionStorage.removeItem('user_profile');
-            window.location.href = '/';
+            // Don't redirect on login endpoint - let the component handle it
+            if (error.config?.url !== '/auth/login') {
+                // Token expired or invalid - redirect to login
+                localStorage.removeItem('supabase_token');
+                localStorage.removeItem('user_profile');
+                sessionStorage.removeItem('supabase_token');
+                sessionStorage.removeItem('user_profile');
+                window.location.href = '/';
+            }
         }
         return Promise.reject(error);
     }

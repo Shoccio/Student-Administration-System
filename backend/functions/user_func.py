@@ -1,92 +1,114 @@
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from models import UserCredential, Student
 
-from db.supabase_client import supabase
-
-def update_user_role(user_id: str, role: str):
+def update_user_role(user_id: str, role: str, db: Session):
     """
-    Update user role in profiles table.
+    Update user role in user_credentials table.
     Only admin, student, or faculty roles allowed.
     """
-    if role not in ["admin", "student", "faculty", "super admin"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid role. Must be 'admin', 'student', 'super admin' or 'faculty'"
-        )
-    
-    # Check if profile exists
-    profile = supabase.table("profiles").select("*").eq("id", user_id).execute()
-    
-    if not profile.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found"
-        )
-    
-    # Update role
-    result = supabase.table("profiles").update({
-        "role": role
-    }).eq("id", user_id).execute()
-    
-    return result
+    try:
+        if role not in ["admin", "student", "faculty", "super admin"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role. Must be 'admin', 'student', 'super admin' or 'faculty'"
+            )
+        
+        # Check if user exists
+        user = db.query(UserCredential).filter(UserCredential.username == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update role
+        user.role = role
+        db.commit()
+        db.refresh(user)
+        return user
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
-def link_student_to_profile(user_id: str, student_id: str):
+def link_student_to_profile(user_id: str, student_id: str, db: Session):
     """
-    Link a student_id to a user profile.
+    Link a student_id to a user credential.
     Used when creating a student account.
     """
-    # Check if profile exists
-    profile = supabase.table("profiles").select("*").eq("id", user_id).execute()
-    
-    if not profile.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found"
-        )
-    
-    # Check if student exists
-    student = supabase.table("students").select("*").eq("student_id", student_id).execute()
-    
-    if not student.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found"
-        )
-    
-    # Update profile with student_id
-    result = supabase.table("profiles").update({
-        "student_id": student_id,
-        "role": "student"
-    }).eq("id", user_id).execute()
-    
-    return result
+    try:
+        # Check if user exists
+        user = db.query(UserCredential).filter(UserCredential.username == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Check if student exists
+        student = db.query(Student).filter(Student.student_id == student_id).first()
+        
+        if not student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Student not found"
+            )
+        
+        # Update user with student_id and set role to student
+        user.student_id = student_id
+        user.role = "student"
+        db.commit()
+        db.refresh(user)
+        return user
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
-def get_user_profile(user_id: str):
+def get_user_profile(user_id: str, db: Session):
     """
-    Get user profile by user_id (UUID from auth.users).
+    Get user profile by username.
     """
-    result = supabase.table("profiles").select("*").eq("id", user_id).execute()
-    
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found"
-        )
-    
-    return result.data[0]
+    try:
+        user = db.query(UserCredential).filter(UserCredential.username == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        return {
+            "username": user.username,
+            "role": user.role,
+            "full_name": user.full_name,
+            "student_id": user.student_id,
+            "email": user.email,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None
+        }
+    except SQLAlchemyError as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
-def delete_profile(user_id: str):
+def delete_profile(user_id: str, db: Session):
     """
-    Delete user profile. The auth.users entry must be deleted separately via Supabase Auth Admin API.
+    Delete user profile.
     """
-    # Check if profile exists
-    profile = supabase.table("profiles").select("*").eq("id", user_id).execute()
-    
-    if not profile.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User profile not found"
-        )
-    
-    result = supabase.table("profiles").delete().eq("id", user_id).execute()
-    
-    return result
+    try:
+        # Check if user exists
+        user = db.query(UserCredential).filter(UserCredential.username == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        db.delete(user)
+        db.commit()
+        return {"message": "User deleted successfully"}
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")

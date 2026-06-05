@@ -1,18 +1,32 @@
 from functions import auth_func, user_func
-from fastapi import APIRouter, Request, HTTPException, status
+from fastapi import APIRouter, Request, HTTPException, status, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel
 from typing import Optional
-from db.supabase_client import supabase
-from passlib.context import CryptContext
+from db.database import get_db
+from models import UserCredential
+import bcrypt
 import jwt
 from datetime import datetime, timedelta
 import os
 
 router = APIRouter()
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing using bcrypt directly
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt"""
+    safe_password = password.encode('utf-8')[:72]
+    return bcrypt.hashpw(safe_password, bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against bcrypt hash"""
+    try:
+        safe_password = password.encode('utf-8')[:72]
+        return bcrypt.checkpw(safe_password, hashed.encode('utf-8'))
+    except:
+        return False
 
 # JWT settings
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
@@ -40,7 +54,7 @@ class AdminUpdateRequest(BaseModel):
     dept: Optional[str] = None
 
 @router.post("/login")
-def login(credentials: LoginRequest):
+def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     """
     Simple database-based authentication.
     Students: username = student_id (e.g., "2021-00001")
@@ -48,88 +62,59 @@ def login(credentials: LoginRequest):
     Returns JWT token for session management.
     """
     try:
-        print(f"=== LOGIN ATTEMPT ===")
-        print(f"Username: {credentials.username}")
-        
         username = credentials.username.strip()
         password = credentials.password
         
-        print(f"Query user_credentials for: {username}")
         # Query user_credentials table
-        result = supabase.table("user_credentials").select("*").eq("username", username).execute()
+        user = db.query(UserCredential).filter(UserCredential.username == username).first()
         
-        print(f"Query result: {len(result.data) if result.data else 0} rows")
-        
-        if not result.data:
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
             )
         
-        user = result.data[0]
-        stored_password = user["hashed_password"]
-        
-        print(f"Stored password starts with TEMP_: {stored_password.startswith('TEMP_')}")
-        print(f"Password length: {len(password)} chars, {len(password.encode('utf-8'))} bytes")
+        stored_password = user.hashed_password
         
         # Check if password is temporary (not hashed yet)
         if stored_password.startswith("TEMP_"):
             # First login - hash the temp password and update
             temp_password = stored_password.replace("TEMP_", "")
-            print(f"Temp password: {temp_password}")
-            print(f"Comparing passwords...")
             if password == temp_password:
-                print(f"Passwords match! Hashing...")
-                # Ensure password is within bcrypt's 72-byte limit before hashing
-                safe_password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-                print(f"Safe password length: {len(safe_password)} chars")
-                try:
-                    print("Calling pwd_context.hash...")
-                    hashed = pwd_context.hash(safe_password)
-                    print(f"Hash successful: {hashed[:20]}...")
-                    supabase.table("user_credentials").update({
-                        "hashed_password": hashed
-                    }).eq("username", username).execute()
-                    print("Database updated")
-                except Exception as hash_error:
-                    print(f"HASH ERROR: {hash_error}")
-                    import traceback
-                    traceback.print_exc()
-                    raise
+                hashed = hash_password(password)
+                user.hashed_password = hashed
+                db.commit()
             else:
-                print("Passwords don't match")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid username or password"
                 )
         else:
-            print("Verifying hashed password...")
             # Verify hashed password
-            safe_password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-            if not pwd_context.verify(safe_password, stored_password):
+            if not verify_password(password, stored_password):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid username or password"
-               )
+                )
         
         # Generate JWT token
         token_data = {
             "sub": username,
             "username": username,
-            "role": user["role"],
-            "dept": user.get("dept"),
-            "student_id": user.get("student_id"),
+            "role": user.role,
+            "dept": user.dept or None,
+            "student_id": user.student_id,
             "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         }
         access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
         
         # Return token and user profile
         profile = {
-            "username": user["username"],
-            "role": user["role"],
-            "full_name": user.get("full_name"),
-            "student_id": user.get("student_id"),
-            "email": user.get("email")
+            "username": user.username,
+            "role": user.role,
+            "full_name": user.full_name,
+            "student_id": user.student_id,
+            "email": user.email
         }
         
         return {
@@ -140,9 +125,12 @@ def login(credentials: LoginRequest):
         
     except HTTPException:
         raise
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
-        import traceback
-        traceback.print_exc()  # Print full error to console
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Login failed: {str(e)}"
@@ -158,90 +146,97 @@ MIN_PASSWORD_LENGTH = 8
 
 
 @router.post("/edit-password/{username}")
-def edit_password(username: str, request: PasswordChangeRequest):
+def edit_password(username: str, request: PasswordChangeRequest, db: Session = Depends(get_db)):
     """
     Change password for a user in user_credentials table.
-    Ported from course_checklist editPass, adapted for user_credentials table.
     """
-    result = supabase.table("user_credentials").select("*").eq("username", username).execute()
+    try:
+        user = db.query(UserCredential).filter(UserCredential.username == username).first()
 
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
 
-    if len(request.new_password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters long"
-        )
+        if len(request.new_password) < MIN_PASSWORD_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters long"
+            )
 
-    # Respect bcrypt 72-byte limit (same guard as login)
-    safe_password = request.new_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    hashed = pwd_context.hash(safe_password)
+        # Respect bcrypt 72-byte limit
+        hashed = hash_password(request.new_password)
 
-    supabase.table("user_credentials").update({
-        "hashed_password": hashed
-    }).eq("username", username).execute()
+        user.hashed_password = hashed
+        db.commit()
 
-    return {"message": "Password updated successfully"}
+        return {"message": "Password updated successfully"}
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
 
 @router.post("/reset-student-password/{student_id}")
-def reset_student_password(student_id: str):
+def reset_student_password(student_id: str, db: Session = Depends(get_db)):
     """
     Reset a student's password to the default value.
     Looks up by student_id first, then falls back to username.
     """
-    result = supabase.table("user_credentials").select("username, student_id").eq("student_id", student_id).execute()
+    try:
+        user = db.query(UserCredential).filter(UserCredential.student_id == student_id).first()
 
-    if not result.data:
-        result = supabase.table("user_credentials").select("username, student_id").eq("username", student_id).execute()
+        if not user:
+            user = db.query(UserCredential).filter(UserCredential.username == student_id).first()
 
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student account not found"
-        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Student account not found"
+            )
 
-    username = result.data[0]["username"]
-    safe_password = DEFAULT_STUDENT_PASSWORD.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    hashed = pwd_context.hash(safe_password)
+        safe_password = DEFAULT_STUDENT_PASSWORD.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+        hashed = hash_password(DEFAULT_STUDENT_PASSWORD)
 
-    supabase.table("user_credentials").update({
-        "hashed_password": hashed
-    }).eq("username", username).execute()
+        user.hashed_password = hashed
+        db.commit()
 
-    return {
-        "message": "Student password reset successfully",
-        "default_password": DEFAULT_STUDENT_PASSWORD,
-        "username": username,
-        "student_id": student_id
-    }
+        return {
+            "message": "Student password reset successfully",
+            "default_password": DEFAULT_STUDENT_PASSWORD,
+            "username": user.username,
+            "student_id": student_id
+        }
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
 
 @router.delete("/delete-user/{username}")
-def delete_user(username: str):
+def delete_user(username: str, db: Session = Depends(get_db)):
     """
     Delete a user from user_credentials table.
-    Ported from course_checklist deleteUser, adapted for user_credentials table.
     """
-    result = supabase.table("user_credentials").select("*").eq("username", username).execute()
+    try:
+        user = db.query(UserCredential).filter(UserCredential.username == username).first()
 
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
 
-    supabase.table("user_credentials").delete().eq("username", username).execute()
+        db.delete(user)
+        db.commit()
 
-    return {"message": "User deleted successfully"}
+        return {"message": "User deleted successfully"}
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Database error: {str(e)}")
 
 
 @router.post("/admin/create")
-def create_admin(admin_data: AdminCreateRequest):
+def create_admin(admin_data: AdminCreateRequest, db: Session = Depends(get_db)):
     """
     Create a new admin user.
     Accepts admin details and stores them in user_credentials table with hashed password.
@@ -255,16 +250,16 @@ def create_admin(admin_data: AdminCreateRequest):
             )
         
         # Check if username already exists
-        existing_user = supabase.table("user_credentials").select("username").eq("username", admin_data.username).execute()
-        if existing_user.data:
+        existing_user = db.query(UserCredential).filter(UserCredential.username == admin_data.username).first()
+        if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Username '{admin_data.username}' already exists"
             )
         
         # Check if email already exists
-        existing_email = supabase.table("user_credentials").select("email").eq("email", admin_data.email).execute()
-        if existing_email.data:
+        existing_email = db.query(UserCredential).filter(UserCredential.email == admin_data.email).first()
+        if existing_email:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Email '{admin_data.email}' already exists"
@@ -278,20 +273,22 @@ def create_admin(admin_data: AdminCreateRequest):
             )
         
         # Hash password (respect bcrypt 72-byte limit)
-        safe_password = admin_data.password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-        hashed_password = pwd_context.hash(safe_password)
+        hashed_password = hash_password(request.password)
         
-        # Insert new admin into user_credentials table
-        admin_record = {
-            "username": admin_data.username,
-            "email": admin_data.email,
-            "full_name": admin_data.full_name,
-            "hashed_password": hashed_password,
-            "role": admin_data.role or "admin",
-            "dept": admin_data.dept
-        }
+        # Create new admin
+        new_admin = UserCredential(
+            username=admin_data.username,
+            email=admin_data.email,
+            full_name=admin_data.full_name,
+            hashed_password=hashed_password,
+            role=admin_data.role or "admin",
+            student_id=None,
+            dept=admin_data.dept
+        )
         
-        result = supabase.table("user_credentials").insert(admin_record).execute()
+        db.add(new_admin)
+        db.commit()
+        db.refresh(new_admin)
         
         return {
             "message": "Admin created successfully",
@@ -306,21 +303,18 @@ def create_admin(admin_data: AdminCreateRequest):
         
     except HTTPException:
         raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    except SQLAlchemyError as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create admin: {str(e)}"
+            detail=f"Database error: {str(e)}"
         )
 
 
 @router.put("/admin-update/{username}")
-def update_admin(username: str, admin_data: AdminUpdateRequest):
+def update_admin(username: str, admin_data: AdminUpdateRequest, db: Session = Depends(get_db)):
     """
     Update an existing admin user.
-    Accepts admin username and fields to update: username, email, full_name, role, and optional password.
-    Password will only be updated if provided.
     """
     try:
         # Validate required fields
@@ -330,33 +324,38 @@ def update_admin(username: str, admin_data: AdminUpdateRequest):
                 detail="Missing required fields: username, email, full_name"
             )
         
+        # Get the admin to update
+        admin = db.query(UserCredential).filter(UserCredential.username == username).first()
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Admin not found"
+            )
+        
         # Check for duplicate username (if username changed)
         if admin_data.username != username:
-            existing_user = supabase.table("user_credentials").select("username").eq("username", admin_data.username).execute()
-            if existing_user.data:
+            existing_user = db.query(UserCredential).filter(UserCredential.username == admin_data.username).first()
+            if existing_user:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Username '{admin_data.username}' already exists"
                 )
         
         # Check for duplicate email
-        existing_email = supabase.table("user_credentials").select("email").eq("email", admin_data.email).eq("username", username).execute()
-        if existing_email.data and existing_email.data[0]["email"] != admin_data.email:
-            existing_email_check = supabase.table("user_credentials").select("email").eq("email", admin_data.email).execute()
-            if existing_email_check.data:
+        if admin_data.email != admin.email:
+            existing_email = db.query(UserCredential).filter(UserCredential.email == admin_data.email).first()
+            if existing_email:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Email '{admin_data.email}' already exists"
                 )
         
-        # Build update data
-        update_record = {
-            "username": admin_data.username,
-            "email": admin_data.email,
-            "full_name": admin_data.full_name,
-            "role": admin_data.role or "admin",
-            "dept": admin_data.dept
-        }
+        # Update admin fields
+        admin.username = admin_data.username
+        admin.email = admin_data.email
+        admin.full_name = admin_data.full_name
+        admin.role = admin_data.role or "admin"
+        admin.dept = admin_data.dept
         
         # Update password if provided
         if admin_data.password:
@@ -366,70 +365,65 @@ def update_admin(username: str, admin_data: AdminUpdateRequest):
                     detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
                 )
             safe_password = admin_data.password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-            update_record["hashed_password"] = pwd_context.hash(safe_password)
+            admin.hashed_password = hash_password(safe_password)
         
-        # Update the admin record
-        supabase.table("user_credentials").update(update_record).eq("username", username).execute()
+        db.commit()
+        db.refresh(admin)
         
         return {
             "message": "Admin updated successfully",
             "admin": {
-                "username": admin_data.username,
-                "email": admin_data.email,
-                "full_name": admin_data.full_name,
-                "role": admin_data.role or "admin",
-                "dept": admin_data.dept
+                "username": admin.username,
+                "email": admin.email,
+                "full_name": admin.full_name,
+                "role": admin.role,
+                "dept": admin.dept
             }
         }
         
     except HTTPException:
         raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    except SQLAlchemyError as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update admin: {str(e)}"
+            detail=f"Database error: {str(e)}"
         )
 
 
 @router.delete("/admin-delete/{username}")
-def delete_admin(username: str):
+def delete_admin(username: str, db: Session = Depends(get_db)):
     """
     Delete an admin user by username.
-    Removes the admin from the user_credentials table.
     """
     try:
-        # Check if admin exists
-        result = supabase.table("user_credentials").select("*").eq("username", username).execute()
+        admin = db.query(UserCredential).filter(UserCredential.username == username).first()
         
-        if not result.data:
+        if not admin:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Admin with username '{username}' not found"
             )
         
-        # Delete the admin
-        supabase.table("user_credentials").delete().eq("username", username).execute()
+        db.delete(admin)
+        db.commit()
         
         return {"message": f"Admin '{username}' deleted successfully"}
         
     except HTTPException:
         raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    except SQLAlchemyError as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete admin: {str(e)}"
+            detail=f"Database error: {str(e)}"
         )
 
 
 @router.get("/admins/search")
-def search_admins(query: str):
+def search_admins(query: str, db: Session = Depends(get_db)):
     """
-    Search for admins by name.
-    Returns all admins whose full_name matches the query.
+    Search for admins by name or username.
     """
     try:
         if not query or query.strip() == "":
@@ -438,47 +432,43 @@ def search_admins(query: str):
                 detail="Query parameter is required"
             )
         
-        # Query user_credentials table for admins with matching name
-        # Using ilike for case-insensitive search
-        result = supabase.table("user_credentials").select("*").eq("role", "admin").execute()
+        # Query user_credentials table for admins
+        admins = db.query(UserCredential).filter(UserCredential.role == "admin").all()
         
-        if not result.data:
+        if not admins:
             return {"admins": []}
         
         # Filter by name - case insensitive
         query_lower = query.lower().strip()
         matching_admins = []
         
-        for admin in result.data:
-            full_name = admin.get("full_name", "").lower()
-            username = admin.get("username", "").lower()
+        for admin in admins:
+            full_name = (admin.full_name or "").lower()
+            username = (admin.username or "").lower()
             
             if query_lower in full_name or query_lower in username:
-                # Return only necessary fields
                 matching_admins.append({
-                    "username": admin["username"],
-                    "full_name": admin.get("full_name"),
-                    "email": admin.get("email"),
-                    "role": admin["role"]
+                    "username": admin.username,
+                    "full_name": admin.full_name,
+                    "email": admin.email,
+                    "role": admin.role
                 })
         
         return {"admins": matching_admins}
         
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Search failed: {str(e)}"
+            detail=f"Database error: {str(e)}"
         )
 
 
 @router.get("/admin/{name}")
-def get_admin_by_name(name: str):
+def get_admin_by_name(name: str, db: Session = Depends(get_db)):
     """
-    Get a specific admin by name.
-    Searches user_credentials table for an admin with matching full_name or username.
-    Returns the admin's information.
+    Get a specific admin by name or username.
     """
     try:
         if not name or name.strip() == "":
@@ -488,9 +478,9 @@ def get_admin_by_name(name: str):
             )
         
         # Query user_credentials table for admins
-        result = supabase.table("user_credentials").select("*").eq("role", "admin").execute()
+        admins = db.query(UserCredential).filter(UserCredential.role == "admin").all()
         
-        if not result.data:
+        if not admins:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No admins found"
@@ -499,18 +489,18 @@ def get_admin_by_name(name: str):
         # Search for exact match or partial match - case insensitive
         name_lower = name.lower().strip()
         
-        for admin in result.data:
-            full_name = admin.get("full_name", "").lower()
-            username = admin.get("username", "").lower()
+        for admin in admins:
+            full_name = (admin.full_name or "").lower()
+            username = (admin.username or "").lower()
             
             if name_lower == full_name or name_lower == username or name_lower in full_name or name_lower in username:
                 return {
-                    "username": admin["username"],
-                    "full_name": admin.get("full_name"),
-                    "email": admin.get("email"),
-                    "role": admin["role"],
-                    "student_id": admin.get("student_id"),
-                    "dept": admin.get("dept"),
+                    "username": admin.username,
+                    "full_name": admin.full_name,
+                    "email": admin.email,
+                    "role": admin.role,
+                    "student_id": admin.student_id,
+                    "dept": admin.dept,
                 }
         
         raise HTTPException(
@@ -520,8 +510,8 @@ def get_admin_by_name(name: str):
         
     except HTTPException:
         raise
-    except Exception as e:
+    except SQLAlchemyError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Get admin failed: {str(e)}"
+            detail=f"Database error: {str(e)}"
         )
