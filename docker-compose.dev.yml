@@ -1,8 +1,6 @@
 services:
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
+    image: ghcr.io/shoccio/student_frontend:dev
     ports:
       - "3000:3000"
     networks:
@@ -12,9 +10,7 @@ services:
       - /app/node_modules
       
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+    image: ghcr.io/shoccio/student_backend:dev
     ports:
       - "8000:8000"
     networks:
