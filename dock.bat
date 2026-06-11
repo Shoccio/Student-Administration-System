@@ -1,21 +1,33 @@
-@ECHO off
-set arg1=%1
+@echo off
 
-if "%1"=="dev" GOTO :dev
+set base=-f docker-compose.yml
 
-if "%1" == "prod" GOTO :prod
-
-echo Usage: .\dock dev - launch docker in development
-echo Usage: .\dock prod - launch docker in production
-
-GOTO :exit
+if "%1"=="dev" goto dev
+if "%1"=="prod" goto prod
+goto help
 
 :dev
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-GOTO :exit
+set layer=%base% -f docker-compose.dev.yml
+goto second_arg
 
 :prod
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
-GOTO :exit
+set layer=%base% -f docker-compose.prod.yml
+goto second_arg
+
+:second_arg
+if "%2"=="up" goto up
+if "%2"=="down" goto down
+goto help
+
+:up
+docker compose %layer% up --build
+goto exit
+
+:down
+docker compose %layer% down
+goto exit
+
+:help
+echo Usage: dock.bat [dev^|prod] [up^|down]
 
 :exit
