@@ -41,5 +41,5 @@ jobs:
     - run: python -c "from main import app"
     - name: Start Uvicorn
       run: |
-        uvicorn main:app --host 127.0.0.1 --port 8000 &
+        uvicorn api:app --host 127.0.0.1 --port 8000 &
         sleep 5
