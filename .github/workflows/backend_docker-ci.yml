@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "docker" ]
 
+permissions:
+  contents: read
+  pacakges: write
+
 
 jobs:
 
