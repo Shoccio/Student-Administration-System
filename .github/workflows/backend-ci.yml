@@ -20,6 +20,7 @@ permissions:
   packages: write
 
 jobs:
+#checks backend if uvicorn runs
   check:
 
     runs-on: ubuntu-latest
@@ -45,10 +46,11 @@ jobs:
       run: |
         uvicorn api:app --host 127.0.0.1 --port 8000 &
         sleep 5
-        
+
     - name: Check API
       run: curl http://127.0.0.1:8000/
 
+#pushes image into github content registry
   docker-image:
     needs: check
 
