@@ -38,11 +38,14 @@ This is a fully containerized fork of the original system, enabling self-hosting
 
 ### Setup (Local Docker)
 
-- Rename .env.example to .env 
+- Copy .env.example content and paste to a new file named .env
 
 ```bash
 # Start all services
 ./dock.bat prod/dev compose up --build
+
+# Generate migration script
+./dock.bat prod/dev exec backend alembic revision --autogenerate -m description                 
 
 # Initialize database
 ./dock.bat prod/dev exec backend alembic upgrade head
