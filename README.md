@@ -38,15 +38,17 @@ This is a fully containerized fork of the original system, enabling self-hosting
 
 ### Setup (Local Docker)
 
+- Rename .env.example to .env 
+
 ```bash
 # Start all services
-docker compose up --build
+./dock.bat prod/dev compose up --build
 
 # Initialize database
-docker compose exec backend alembic upgrade head
+./dock.bat prod/dev exec backend alembic upgrade head
 
 # Seed initial data
-docker compose exec backend python seed.py
+./dock.bat prod/dev exec backend python seed.py
 ```
 
 Access the application:
@@ -57,10 +59,10 @@ Access the application:
 
 ```bash
 # Stop containers
-docker compose down
+./dock.bat prod/dev compose down
 
 # Remove volumes and reset database
-docker compose down -v
+./dock.bat prod/dev compose down -v
 ```
 
 ---
